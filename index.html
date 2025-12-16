@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Système de Sécurité Trottinette — PIC16F877A</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.3.0/dist/model-viewer.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      margin: 0; 
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+      overflow: hidden;
+    }
+    model-viewer { 
+      width: min(100vw, 1000px); 
+      height: min(100vh, 700px); 
+      background-color: transparent; 
+    }
+    
+    /* HUD Principal */
+    .hud { 
+      position: absolute; 
+      top: 20px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      display: flex; 
+      gap: 12px; 
+      align-items: center; 
+      pointer-events: none; 
+      z-index: 10; 
+    }
+    .title { 
+      pointer-events: none; 
+      font-size: 18px; 
+      font-weight: 600;
+      color: #fff; 
+      background: linear-gradient(135deg, rgba(44,130,255,0.85), rgba(28,90,200,0.85)); 
+      padding: 10px 16px; 
+      border-radius: 12px; 
+      backdrop-filter: blur(10px); 
+      box-shadow: 0 4px 20px rgba(44,130,255,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .status-pill { 
+      pointer-events: none; 
+      font-size: 14px; 
+      font-weight: 600;
+      color: #111; 
+      background: #9cf49c; 
+      padding: 8px 14px; 
+      border-radius: 999px; 
+      border: 2px solid rgba(0,0,0,0.15); 
+      box-shadow: 0 2px 10px rgba(156,244,156,0.4);
+    }
+    .status-pill.alert { background: #ffd47a; box-shadow: 0 2px 10px rgba(255,212,122,0.4); }
+    .status-pill.tampered { background: #ff8c8c; box-shadow: 0 2px 10px rgba(255,140,140,0.4); }
+    
+    /* Header Info */
+    .header { 
+      position: absolute; 
+      top: 20px; 
+      left: 20px; 
+      display: grid; 
+      grid-template-columns: auto; 
+      gap: 8px; 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      padding: 14px 16px; 
+      border-radius: 14px; 
+      backdrop-filter: blur(12px); 
+      border: 1px solid rgba(255,255,255,0.15); 
+      max-width: min(520px, 95vw); 
+      pointer-events: none; 
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .header .brand { font-weight: 700; font-size: 18px; color: #2c82ff; }
+    .header .version { font-size: 13px; opacity: 0.85; }
+    .header .statusline { font-size: 14px; margin-top: 4px; }
+    .header .statusdesc { font-size: 12px; line-height: 1.5; opacity: 0.9; margin-top: 4px; }
+    
+    /* Cluster LED + Batterie */
+    .cluster { 
+      position: absolute; 
+      top: 20px; 
+      right: 20px; 
+      display: grid; 
+      grid-template-columns: 1fr; 
+      gap: 10px; 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      padding: 14px 16px; 
+      border-radius: 14px; 
+      backdrop-filter: blur(12px); 
+      border: 1px solid rgba(255,255,255,0.15); 
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .cluster-caption { 
+      font-size: 12px; 
+      opacity: 0.85; 
+      font-weight: 600; 
+      color: #2c82ff;
+      margin-bottom: 4px;
+    }
+    .led-row { 
+      display: flex; 
+      align-items: center; 
+      gap: 10px; 
+      padding: 4px 0;
+    }
+    .led-label { 
+      font-size: 13px; 
+      opacity: 0.95; 
+      line-height: 1.3;
+    }
+    
+    /* LEDs */
+    .led-dot { 
+      width: 14px; 
+      height: 14px; 
+      border-radius: 50%; 
+      opacity: 0.4; 
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.3) inset; 
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+    .led-dot.on { 
+      opacity: 1; 
+      box-shadow: 0 0 16px currentColor, 0 0 4px currentColor inset; 
+      animation: ledpulse 1.8s ease-in-out infinite; 
+    }
+    .led-dot.green { background: #32d45f; color: #32d45f; }
+    .led-dot.yellow { background: #ffd47a; color: #ffd47a; }
+    .led-dot.red { background: #ff3b3b; color: #ff3b3b; }
+    .led-dot.blue { background: #2c82ff; color: #2c82ff; }
+    
+    @keyframes ledpulse { 
+      0% { box-shadow: 0 0 12px currentColor; } 
+      50% { box-shadow: 0 0 22px currentColor; } 
+      100% { box-shadow: 0 0 12px currentColor; } 
+    }
+    
+    /* Buzzer */
+    .buzzer-icon { 
+      width: 14px; 
+      height: 14px; 
+      border-radius: 50%; 
+      background: #ff3b3b; 
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.25) inset; 
+      opacity: 0.4; 
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+    .buzzer-icon.active { 
+      opacity: 1; 
+      box-shadow: 0 0 16px #ff3b3b, 0 0 4px #ff3b3b inset; 
+      animation: ledpulse 1.8s ease-in-out infinite;
+    }
+    
+    /* Motor Bar */
+    .motor-bar { 
+      display: grid; 
+      grid-template-columns: repeat(10, 1fr); 
+      gap: 3px; 
+      width: 140px; 
+      height: 14px; 
+      background: rgba(255,255,255,0.08); 
+      border: 1px solid rgba(255,255,255,0.25); 
+      border-radius: 4px; 
+      padding: 2px; 
+    }
+    .motor-bar .seg { 
+      background: rgba(255,255,255,0.15); 
+      border-radius: 2px; 
+      transition: background 0.15s ease;
+    }
+    .motor-bar .seg.on { background: #32d45f; box-shadow: 0 0 4px #32d45f; }
+    
+    #obstacleBar .seg.on {
+      /* Override for obstacle bar - uses dynamic colors set in JS */
+    }
+    
+    /* Battery */
+    .battery { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .battery .bar { 
+      display: grid; 
+      grid-template-columns: repeat(5, 1fr); 
+      gap: 3px; 
+      width: 70px; 
+      height: 12px; 
+      background: rgba(255,255,255,0.08); 
+      border: 1px solid rgba(255,255,255,0.25); 
+      border-radius: 4px; 
+      padding: 2px; 
+    }
+    .battery .seg { 
+      background: rgba(255,255,255,0.15); 
+      border-radius: 2px; 
+      transition: background 0.15s ease;
+    }
+    .battery .seg.on.safe { background: #32d45f; box-shadow: 0 0 4px #32d45f; }
+    .battery .seg.on.alert { background: #ffd47a; box-shadow: 0 0 4px #ffd47a; }
+    .battery .seg.on.tampered { background: #ff3b3b; box-shadow: 0 0 4px #ff3b3b; }
+    
+    /* Panels */
+    .panel { 
+      position: relative; 
+      width: 340px; 
+      max-width: calc(100vw - 32px); 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      border-radius: 14px; 
+      padding: 16px; 
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .panel h3 { 
+      margin: 0 0 10px 0; 
+      font-size: 17px; 
+      font-weight: 600; 
+      color: #2c82ff;
+    }
+    .panel .meta { 
+      font-size: 13px; 
+      opacity: 0.95; 
+      line-height: 1.5; 
+    }
+    
+    .rail { 
+      position: absolute; 
+      left: 20px; 
+      bottom: 20px; 
+      display: flex; 
+      flex-direction: column; 
+      gap: 14px; 
+      align-items: flex-start; 
+      z-index: 10;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+      padding-right: 10px;
+    }
+    
+    .rail::-webkit-scrollbar { width: 6px; }
+    .rail::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 10px; }
+    .rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    
+    .control-panel { 
+      width: 340px; 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      border-radius: 14px; 
+      padding: 16px; 
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .control-panel h4 { 
+      margin: 0 0 12px 0; 
+      font-size: 16px; 
+      font-weight: 600; 
+      color: #2c82ff;
+    }
+    .control-panel .group { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 8px; 
+    }
+    .control-panel .group label {
+      display: block;
+      font-size: 13px;
+      opacity: 0.9;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    
+    /* Dashboard */
+    .dashboard { 
+      width: 340px; 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      border-radius: 14px; 
+      padding: 16px; 
+      backdrop-filter: blur(12px); 
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .dashboard h4 { 
+      margin: 0 0 12px 0; 
+      font-size: 16px; 
+      font-weight: 600; 
+      color: #2c82ff;
+    }
+    .tiles { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 10px; 
+    }
+    .tile { 
+      background: rgba(255,255,255,0.06); 
+      border: 1px solid rgba(255,255,255,0.15); 
+      border-radius: 10px; 
+      padding: 12px; 
+      min-height: 60px;
+      transition: all 0.2s ease;
+    }
+    .tile:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.25);
+    }
+    .tile .label { 
+      font-size: 12px; 
+      opacity: 0.85; 
+      margin-bottom: 6px; 
+      font-weight: 500;
+    }
+    .tile .value { 
+      font-size: 15px; 
+      font-weight: 600; 
+    }
+    
+    .pill { 
+      display: inline-block; 
+      padding: 4px 10px; 
+      border-radius: 999px; 
+      font-size: 12px; 
+      border: 1px solid rgba(255,255,255,0.15); 
+      font-weight: 600;
+    }
+    .pill.safe { background: #9cf49c; color: #111; }
+    .pill.alert { background: #ffd47a; color: #111; }
+    .pill.tampered { background: #ff8c8c; color: #111; }
+    
+    /* Buttons */
+    .btn { 
+      appearance: none; 
+      border: 1px solid rgba(255,255,255,0.25); 
+      background: rgba(255,255,255,0.08); 
+      color: #fff; 
+      padding: 10px 14px; 
+      border-radius: 10px; 
+      font-size: 13px; 
+      cursor: pointer; 
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .btn:hover:not(:disabled) { 
+      background: rgba(255,255,255,0.15); 
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .btn.primary { 
+      background: linear-gradient(135deg, #2c82ff, #1c5ac8); 
+      border-color: #2c82ff; 
+      box-shadow: 0 2px 10px rgba(44,130,255,0.3);
+    }
+    .btn.primary:hover:not(:disabled) { 
+      background: linear-gradient(135deg, #3a92ff, #2c6ad8);
+      box-shadow: 0 4px 16px rgba(44,130,255,0.4);
+    }
+    .btn.warn { 
+      background: linear-gradient(135deg, #ff9f2c, #e88a20); 
+      border-color: #ff9f2c; 
+      box-shadow: 0 2px 10px rgba(255,159,44,0.3);
+    }
+    .btn.danger { 
+      background: linear-gradient(135deg, #ff3b3b, #e32828); 
+      border-color: #ff3b3b;
+      box-shadow: 0 2px 10px rgba(255,59,59,0.3);
+    }
+    .btn:disabled { 
+      opacity: 0.4; 
+      cursor: not-allowed; 
+      transform: none;
+    }
+    
+    /* LCD Display */
+    .lcd { 
+      min-width: 180px; 
+      max-width: 240px; 
+      background: #0a1f0a; 
+      color: #9fe79f; 
+      border: 2px solid #1b3c1b; 
+      border-radius: 8px; 
+      padding: 10px 12px; 
+      font-family: "Courier New", Courier, monospace; 
+      font-size: 13px; 
+      line-height: 1.5; 
+      box-shadow: 0 0 12px rgba(0, 255, 0, 0.25), inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    .lcd .line { 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+    }
+    .lcd .title { font-weight: 700; }
+    
+    /* Hotspots */
+    .throttle { 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      padding: 12px; 
+      border-radius: 12px; 
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .throttle input[type="range"] { 
+      width: 160px; 
+      margin: 8px 0;
+    }
+    
+    .indicator { 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      padding: 8px 12px; 
+      border-radius: 12px; 
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      font-weight: 500;
+    }
+    
+    .Hotspot { 
+      border: none; 
+      background: rgba(44,130,255,0.9); 
+      color: #fff; 
+      border-radius: 999px; 
+      padding: 8px 12px; 
+      font-size: 12px; 
+      white-space: nowrap; 
+      cursor: pointer; 
+      font-weight: 600;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 10px rgba(44,130,255,0.4);
+    }
+    .Hotspot:hover {
+      background: rgba(44,130,255,1);
+      transform: scale(1.05);
+    }
+    
+    /* LED 3D */
+    .led { 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 8px; 
+      padding: 8px 10px; 
+      background: rgba(0,0,0,0.5); 
+      border-radius: 12px; 
+      color: #eaeaea; 
+      font-size: 11px; 
+    }
+    .dot { 
+      width: 12px; 
+      height: 12px; 
+      border-radius: 50%; 
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.25) inset; 
+      opacity: 0.5; 
+    }
+    .dot.red { background: #ff3b3b; }
+    .dot.green { background: #32d45f; }
+    .on .dot { 
+      opacity: 1; 
+      box-shadow: 0 0 16px currentColor, 0 0 4px currentColor inset; 
+      animation: ledpulse 1.6s ease-in-out infinite; 
+    }
+    
+    @keyframes blink { 
+      0% { opacity: 1; } 
+      50% { opacity: 0.25; } 
+      100% { opacity: 1; } 
+    }
+    .blink .dot { animation: blink 1s linear infinite; }
+    
+    /* Log Box */
+    .log-box { 
+      width: 340px; 
+      background: rgba(0,0,0,0.75); 
+      color: #eaeaea; 
+      border-radius: 14px; 
+      padding: 16px; 
+      backdrop-filter: blur(12px); 
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .log-box h4 { 
+      margin: 0 0 10px 0; 
+      font-size: 16px; 
+      font-weight: 600; 
+      color: #2c82ff;
+    }
+    .log { 
+      margin-top: 8px; 
+      max-height: 160px; 
+      overflow: auto; 
+      background: rgba(255,255,255,0.04); 
+      border-radius: 8px; 
+      padding: 10px; 
+      font-size: 12px; 
+      line-height: 1.5; 
+    }
+    .log .entry { 
+      opacity: 0.95; 
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .log .entry:last-child {
+      border-bottom: none;
+    }
+    .log::-webkit-scrollbar { width: 6px; }
+    .log::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 10px; }
+    .log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    
+    /* Wheel Animation */
+    @keyframes spin { 
+      from { transform: rotate(0deg); } 
+      to { transform: rotate(360deg); } 
+    }
+    .wheel { 
+      width: 26px; 
+      height: 26px; 
+      border-radius: 50%; 
+      border: 3px solid rgba(255,255,255,0.9); 
+      background: rgba(0,0,0,0.3); 
+      box-shadow: 0 0 8px rgba(255,255,255,0.4), inset 0 0 8px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .wheel::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.8);
+    }
+    
+    /* Responsive */
+    @media (max-width: 720px) { 
+      .rail { right: 10px; bottom: 10px; gap: 10px; left: auto; } 
+      .panel, .control-panel, .dashboard, .log-box { width: min(95vw, 360px); } 
+      .header { left: 10px; max-width: 95vw; } 
+      .cluster { right: 10px; }
+    }
+    @media (max-width: 420px) { 
+      .tiles { grid-template-columns: 1fr; }
+      .hud { flex-direction: column; gap: 8px; top: 10px; }
+    }
+  </style>
+</head>
+<body>
+<model-viewer
+  id="viewer"
+  src="scooter.glb"
+  camera-controls
+  touch-action="pan-y"
+  auto-rotate
+  auto-rotate-delay="4000"
+  shadow-intensity="0.3"
+  exposure="1.1"
+  interaction-prompt="none"
+  ar-modes="webxr scene-viewer quick-look"
+>
+  <!-- SEUL HOTSPOT VISIBLE: Accéléromètre -->
+  <div class="throttle" slot="hotspot-throttle" id="throttleHotspot" data-position="0.1m 1.05m 0.3m" data-normal="0m 1m 0m" data-visibility-attribute="visible">
+    <div style="font-weight:600;margin-bottom:4px;">🎚 Accéléromètre (RA0/RA1 — ADC0)</div>
+    <div style="font-size:11px;opacity:0.85;margin-bottom:4px;">Inclinaison → Vitesse PWM</div>
+    <input type="range" id="throttleInput" min="0" max="100" value="0">
+    <div style="margin-top:8px;font-size:13px;">Vitesse cible : <span id="speedOverlayVal">0%</span></div>
+  </div>
+  
+  <!-- Direction Indicator -->
+  <div class="indicator" id="dirIndicator" slot="hotspot-direction" data-position="-0.35m 0.08m -0.85m" data-normal="0m 1m 0m" data-visibility-attribute="visible">Direction : ARRÊT</div>
+  
+  <!-- Rear Wheel Animation -->
+  <div class="wheel" id="rearWheel" slot="hotspot-wheel" data-position="-0.55m 0.08m -0.9m" data-normal="0m 1m 0m" data-visibility-attribute="visible"></div>
+  
+  <!-- Boutons de contrôle (cachés sur le modèle 3D mais accessibles) -->
+  <button class="Hotspot" id="btnRB0" slot="hotspot-btn-sec" data-position="0.15m 1.1m 0.2m" data-normal="0m 1m 0m" data-visibility-attribute="visible" style="display:none;">🔐 Security</button>
+  <button class="Hotspot" id="btnRB4" slot="hotspot-btn-charge" data-position="-0.2m 0.05m -0.3m" data-normal="0m 1m 0m" data-visibility-attribute="visible" style="display:none;">🔋 Charge</button>
+  <button class="Hotspot" id="btnRB7" slot="hotspot-btn-history-recent" data-position="0.25m 0.95m 0.2m" data-normal="0m 1m 0m" data-visibility-attribute="visible" style="display:none;">⏱ Recent</button>
+  <button class="Hotspot" id="btnRA4" slot="hotspot-btn-timer" data-position="-0.15m 0.05m -0.25m" data-normal="0m 1m 0m" data-visibility-attribute="visible" style="display:none;">⏲ Confirm</button>
+  
+  <!-- LCD Display (caché sur modèle 3D) -->
+  <div slot="hotspot-lcd" data-position="0m 1.15m 0m" data-normal="0m 1m 0m" class="lcd" id="lcdDisplay" data-visibility-attribute="visible" style="display:none;">
+    <div class="line title" id="lcdLine1">SYSTEME PRET</div>
+    <div class="line" id="lcdLine2">SEC ON • V: 0%</div>
+  </div>
+  
+  <!-- LEDs (cachées sur modèle 3D) -->
+  <div slot="hotspot-led-rb2" data-position="-0.3m 0.12m -0.8m" data-normal="0m 1m 0m" class="led on" id="ledRB2" data-visibility-attribute="visible" style="display:none;">
+    <div class="dot red"></div><span>BRAKE / WARNING</span>
+  </div>
+  <div slot="hotspot-led-rb3" data-position="0m 1.1m 0.1m" data-normal="0m 1m 0m" class="led" id="ledRB3" data-visibility-attribute="visible" style="display:none;">
+    <div class="dot green"></div><span>SYSTEM OK</span>
+  </div>
+</model-viewer>
+
+<!-- HUD Principal -->
+<div class="hud">
+  <div class="title">🛴 Système de Sécurité Trottinette</div>
+  <div id="systemStatus" class="status-pill">Sûr</div>
+  <div class="pill" style="background: rgba(44,130,255,0.2); color: #2c82ff; border-color: rgba(44,130,255,0.4);">PIC16F877A — ADC • PWM • Timer0 • EEPROM</div>
+</div>
+
+<!-- Header Info -->
+<div class="header">
+  <div class="brand">⚡ ALERT™ Security System</div>
+  <div class="version">Version 1.0 — Build 2025</div>
+  <div class="statusline">Verrou électronique intelligent — État : DÉVERROUILLÉ</div>
+  <div class="statusdesc">Protection multi-niveaux : Menaces physiques • Attaques logicielles • Contournement mécanique | Contremesures actives : Challenge-réponse • Limitation de débit • Blindage intégré</div>
+</div>
+
+<!-- Cluster LED + Batterie + Direction -->
+<div class="cluster" id="ledCluster">
+  <div class="cluster-caption">🔌 HARDWARE — PORTB LEDs (Guidon)</div>
+  
+  <div class="led-row">
+    <div class="led-dot green" id="ledSystemOk"></div>
+    <div class="led-label">LED Verte (RB3) — Système OK / Charge terminée</div>
+  </div>
+  
+  <div class="led-row">
+    <div class="led-dot red" id="ledTampered"></div>
+    <div class="led-label">LED Rouge (RB2) — Obstacle / Freinage urgence</div>
+  </div>
+  
+  <div class="led-row">
+    <div class="led-dot yellow" id="ledAlert"></div>
+    <div class="led-label">LED Jaune — Charge en cours</div>
+  </div>
+  
+  <div class="led-row">
+    <div class="led-dot blue" id="ledConnected"></div>
+    <div class="led-label">Connexion Bluetooth</div>
+  </div>
+  
+  <div class="led-row">
+    <div class="buzzer-icon" id="buzzerIcon"></div>
+    <div class="led-label">Buzzer (Q1 NPN) — Alarme obstacle</div>
+  </div>
+  
+  <div class="led-row">
+    <div class="led-dot blue" id="dirIcon"></div>
+    <div class="led-label" id="directionRowText">Direction : ARRÊT (RD0=0, RD1=0)</div>
+  </div>
+  
+  <div class="battery">
+    <span style="font-size:13px;opacity:0.95;font-weight:500;">🔋 Batterie</span>
+    <div class="bar" id="batteryBar">
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Rail gauche - Panneau d'information + Contrôles -->
+<div class="rail">
+  <!-- LCD physique -->
+  <div class="panel" style="background: #0a1f0a; border: 2px solid #1b3c1b; box-shadow: 0 0 12px rgba(0, 255, 0, 0.25);">
+    <h3 style="color: #9fe79f; font-size: 14px; margin-bottom: 8px;">📟 LCD 16×2 (PORTC)</h3>
+    <div class="lcd" style="min-width: auto; max-width: 100%; border: none; box-shadow: none; padding: 8px;">
+      <div class="line title" id="lcdLine1Main">SYSTEME PRET</div>
+      <div class="line" id="lcdLine2Main">SEC ON • V: 0%</div>
+    </div>
+  </div>
+  
+  <!-- Panel Info Composant -->
+  <div class="panel" id="infoPanel">
+    <h3 id="panelTitle">💡 Instructions</h3>
+    <div class="meta" id="panelMeta">Utilisez les contrôles pour tester les 7 scénarios académiques du PIC16F877A.</div>
+  </div>
+  
+  <!-- Control Panel -->
+  <div class="control-panel" id="controlPanel">
+    <h4>🎮 Contrôles PIC (Interrupts)</h4>
+    <div class="group">
+      <button class="btn primary" id="btnRB0Int">🔐 RB0 — Security Toggle</button>
+      <button class="btn primary" id="btnRB4Int">🔋 RB4 — Charge Mode</button>
+      <button class="btn primary" id="btnRB7Int">⏱ RB7 — Alert History</button>
+      <button class="btn primary" id="btnRA4Int">⏲ RA4 — Timer0 Confirm</button>
+    </div>
+    
+    <div class="group" style="margin-top:12px;">
+      <label>🚧 OBSTACLE (RA2 — ADC1) — Capteur Proximité</label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <input type="range" id="obstacleInput" min="0" max="100" value="0" style="flex:1;">
+        <span id="obstacleInputVal" style="font-size:14px;font-weight:600;min-width:60px;">0%</span>
+      </div>
+      <div style="font-size:11px;opacity:0.8;margin-top:4px;">⚠ Obstacle > 50% → Freinage automatique + Buzzer</div>
+    </div>
+  </div>
+  
+  <!-- Dashboard -->
+  <div class="dashboard" id="dashboard">
+    <h4>📊 Tableau de Bord — Temps Réel</h4>
+    <div class="tiles">
+      <div class="tile" id="tileSpeed">
+        <div class="label">⚡ Vitesse PWM</div>
+        <div class="value"><span id="speedVal">0%</span></div>
+      </div>
+      
+      <div class="tile" id="tileMotor">
+        <div class="label">🔧 Moteur L293D</div>
+        <div class="value">
+          <div class="motor-bar" id="motorBar">
+            <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+            <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+          </div>
+          <div id="motorText" style="margin-top:6px;font-size:11px;opacity:0.9;">⏸ Moteur : 0% — ARRÊT</div>
+        </div>
+      </div>
+      
+      <div class="tile" id="tileObstacle">
+        <div class="label">🚧 Obstacle (RA2)</div>
+        <div class="value">
+          <div class="motor-bar" id="obstacleBar" style="border-color: rgba(255,59,59,0.3);">
+            <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+            <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+          </div>
+          <div id="obstacleText" style="margin-top:6px;font-size:11px;opacity:0.9;">Proximité : 0%</div>
+        </div>
+      </div>
+      
+      <div class="tile" id="tileAlert">
+        <div class="label">⚠ État Alerte</div>
+        <div class="value"><span id="alertVal" class="pill safe">Sûr</span></div>
+      </div>
+      
+      <div class="tile" id="tileSystem" style="grid-column: span 2;">
+        <div class="label">🔐 État Système</div>
+        <div class="value">
+          <span id="systemVal" class="pill safe">Sûr</span>
+          <span id="lockVal" class="pill">VERROUILLÉ</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Log Box -->
+  <div class="log-box">
+    <h4>📜 Journal Système (EEPROM)</h4>
+    <div class="log" id="eventLog"></div>
+  </div>
+</div>
+
+<script type="module">
+  // ============================================
+  // SYSTÈME DE SÉCURITÉ TROTTINETTE — PIC16F877A
+  // ============================================
+  
+  // DOM Elements
+  const viewer = document.querySelector('#viewer');
+  const systemStatusEl = document.querySelector('#systemStatus');
+  const panelTitleEl = document.querySelector('#panelTitle');
+  const panelMetaEl = document.querySelector('#panelMeta');
+  const eventLogEl = document.querySelector('#eventLog');
+  
+  // LCD Elements
+  const lcdL1 = document.querySelector('#lcdLine1Main');
+  const lcdL2 = document.querySelector('#lcdLine2Main');
+  
+  // Input Elements
+  const throttleInput = document.querySelector('#throttleInput');
+  const speedOverlayVal = document.querySelector('#speedOverlayVal');
+  const obstacleInput = document.querySelector('#obstacleInput');
+  const obstacleInputVal = document.querySelector('#obstacleInputVal');
+  
+  // Button Elements (PIC Interrupts)
+  const btnRB0Int = document.querySelector('#btnRB0Int');
+  const btnRB4Int = document.querySelector('#btnRB4Int');
+  const btnRB7Int = document.querySelector('#btnRB7Int');
+  const btnRA4Int = document.querySelector('#btnRA4Int');
+  
+  // Display Elements
+  const dirIndicator = document.querySelector('#dirIndicator');
+  const dirIcon = document.querySelector('#dirIcon');
+  const directionRowText = document.querySelector('#directionRowText');
+  const buzzerIcon = document.querySelector('#buzzerIcon');
+  const rearWheelEl = document.querySelector('#rearWheel');
+  
+  const speedVal = document.querySelector('#speedVal');
+  const obstacleVal = document.querySelector('#obstacleText');
+  const obstacleBar = document.querySelector('#obstacleBar');
+  const alertVal = document.querySelector('#alertVal');
+  const systemVal = document.querySelector('#systemVal');
+  const lockVal = document.querySelector('#lockVal');
+  const motorText = document.querySelector('#motorText');
+  
+  // LED Elements
+  const ledSystemOk = document.querySelector('#ledSystemOk');
+  const ledAlert = document.querySelector('#ledAlert');
+  const ledTampered = document.querySelector('#ledTampered');
+  const ledConnected = document.querySelector('#ledConnected');
+  const batteryBar = document.querySelector('#batteryBar');
+  const motorBar = document.querySelector('#motorBar');
+  
+  // ============================================
+  // STATE MACHINE — PIC16F877A
+  // ============================================
+  
+  const SystemState = Object.freeze({ 
+    SAFE: 'safe', 
+    ALERT: 'alert', 
+    TAMPERED: 'tampered' 
+  });
+  
+  const stateLabel = s => {
+    switch(s) {
+      case SystemState.SAFE: return 'Sûr';
+      case SystemState.ALERT: return 'Alerte';
+      case SystemState.TAMPERED: return 'Altéré';
+      default: return 'Inconnu';
+    }
+  };
+  
+  // System State Variables
+  let systemState = SystemState.SAFE;
+  let securityEnabled = true;
+  let charging = false;
+  let charged = false;
+  let braking = false;
+  let obstacle = false;
+  let obstacleActive = false;
+  let lcdMode = 'normal'; // 'normal' | 'history'
+  
+  // Motor & Speed (PWM Simulation)
+  let speedCurrentPct = 0;  // Actual speed (smooth transition)
+  let speedTargetPct = 0;   // Target speed from throttle
+  let direction = 'stop';   // 'stop' | 'forward' | 'reverse'
+  
+  // Battery & Distance
+  let batteryPct = 80;
+  let obstaclePct = 0; // Obstacle level 0-100%
+  let batteryDrainIntervalId = null;
+  
+  // Charging System (Timer0 simulation)
+  let chargeBlinkId = null;
+  let chargeTimerId = null;
+  let chargePressCount = 0;
+  
+  // PWM Smooth Transition
+  let pwmIntervalId = null;
+  
+  // Alert History (EEPROM simulation)
+  const alerts = [];
+  const events = [];
+  
+  // Audio Context for Buzzer
+  let audioCtx = null;
+  
+  // ============================================
+  // LOGGING SYSTEM
+  // ============================================
+  
+  function logEvent(category, message) {
+    const now = new Date();
+    const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+    events.unshift({ ts, category, message });
+    
+    const maxEvents = 30;
+    if (events.length > maxEvents) events.length = maxEvents;
+    
+    eventLogEl.innerHTML = events
+      .map(e => `<div class="entry"><strong>[${e.ts}]</strong> ${e.category.toUpperCase()}: ${e.message}</div>`)
+      .join('');
+  }
+  
+  // ============================================
+  // LCD 16×2 DISPLAY (PORTC) — MESSAGE PRIORITY
+  // ============================================
+  
+  function refreshLCD() {
+    // Priority 1: Obstacle/Braking (highest)
+    if (braking && obstacle) {
+      lcdL1.textContent = 'OBSTACLE !';
+      lcdL2.textContent = 'FREINAGE !';
+      return;
+    }
+    
+    // Priority 2: Charging Mode
+    if (charging) {
+      lcdL1.textContent = 'Mode CHARGE actif';
+      lcdL2.textContent = `RA4: ${chargePressCount}/5 • SEC ${securityEnabled ? 'ON' : 'OFF'}`;
+      return;
+    }
+    
+    // Priority 2b: Charge just finished
+    if (charged) {
+      lcdL1.textContent = 'Charge terminée';
+      lcdL2.textContent = 'Batterie pleine';
+      return;
+    }
+    
+    // Priority 3: Alert History Consultation
+    if (lcdMode === 'history') {
+      // Don't override — history display managed separately
+      return;
+    }
+    
+    // Priority 4: System States
+    if (systemState === SystemState.TAMPERED) {
+      lcdL1.textContent = 'SYSTÈME BLOQUÉ';
+      lcdL2.textContent = 'TAMPERED — RESET';
+      return;
+    }
+    
+    if (systemState === SystemState.ALERT) {
+      lcdL1.textContent = 'ALERTE SYSTÈME';
+      lcdL2.textContent = `V: ${speedCurrentPct}%`;
+      return;
+    }
+    
+    // Priority 5: Normal Operation (lowest)
+    lcdL1.textContent = 'SYSTÈME PRÊT';
+    lcdL2.textContent = `SEC ${securityEnabled ? 'ON' : 'OFF'} • V: ${speedCurrentPct}%`;
+  }
+  
+  // ============================================
+  // LED CONTROL (RB2, RB3)
+  // ============================================
+  
+  function refreshLEDs() {
+    // LED RB2 (Red) - Brake/Warning
+    // LED RB3 (Green) - System OK
+    
+    // Connexion LED always on in this demo
+    ledConnected.classList.add('on');
+  }
+  
+  // ============================================
+  // CLUSTER DISPLAY (LEDs + Battery + Direction)
+  // ============================================
+  
+  function refreshCluster() {
+    // LED System OK (Green)
+    ledSystemOk.classList.toggle('on', systemState === SystemState.SAFE || charged);
+    
+    // LED Alert (Yellow) - during charging
+    ledAlert.classList.toggle('on', charging);
+    
+    // LED Tampered (Red) - during braking/obstacle
+    ledTampered.classList.toggle('on', braking || obstacleActive);
+    
+    // Buzzer Icon
+    buzzerIcon.classList.toggle('active', obstacle);
+    
+    // Direction Display (RD0/RD1)
+    let dirLbl = '';
+    if (direction === 'forward') {
+      dirLbl = 'AVANT (RD0=1, RD1=0)';
+    } else if (direction === 'reverse') {
+      dirLbl = 'ARRIÈRE (RD0=0, RD1=1)';
+    } else {
+      dirLbl = 'ARRÊT (RD0=0, RD1=0)';
+    }
+    
+    if (directionRowText) directionRowText.textContent = `Direction : ${dirLbl}`;
+    if (dirIcon) dirIcon.classList.toggle('on', speedCurrentPct > 0);
+    
+    // Battery Display
+    const segs = batteryBar.querySelectorAll('.seg');
+    const cls = systemState === SystemState.TAMPERED ? 'tampered' : 
+                (systemState === SystemState.ALERT ? 'alert' : 'safe');
+    const lit = Math.round(Math.max(0, Math.min(100, batteryPct)) / 20);
+    
+    segs.forEach((seg, i) => {
+      seg.classList.remove('on', 'safe', 'alert', 'tampered');
+      if (i < lit) {
+        seg.classList.add('on', cls);
+      }
+    });
+  }
+  
+  // ============================================
+  // DASHBOARD UPDATE
+  // ============================================
+  
+  function refreshDashboard() {
+    // Speed
+    speedVal.textContent = `${speedCurrentPct}%`;
+    
+    // Obstacle bar visualization
+    const obstacleSegs = obstacleBar.querySelectorAll('.seg');
+    const obstacleLit = Math.round(obstaclePct / 10);
+    obstacleSegs.forEach((seg, i) => {
+      seg.classList.remove('on');
+      seg.style.background = '';
+      if (i < obstacleLit) {
+        seg.classList.add('on');
+        if (obstaclePct > 50) {
+          seg.style.background = '#ff3b3b'; // Red when danger
+          seg.style.boxShadow = '0 0 4px #ff3b3b';
+        } else {
+          seg.style.background = '#ffd47a'; // Yellow when safe
+          seg.style.boxShadow = '0 0 4px #ffd47a';
+        }
+      }
+    });
+    
+    // Obstacle text
+    const obstacleStatus = obstaclePct > 50 ? '⚠ DANGER!' : (obstaclePct > 0 ? 'Détecté' : 'Aucun');
+    obstacleVal.textContent = `Proximité : ${obstaclePct}% — ${obstacleStatus}`;
+    if (obstaclePct > 50) {
+      obstacleVal.style.color = '#ff3b3b';
+      obstacleVal.style.fontWeight = '700';
+    } else {
+      obstacleVal.style.color = '';
+      obstacleVal.style.fontWeight = '';
+    }
+    
+    // Alert State
+    alertVal.textContent = stateLabel(systemState);
+    alertVal.classList.remove('safe', 'alert', 'tampered');
+    
+    systemVal.textContent = stateLabel(systemState);
+    systemVal.classList.remove('safe', 'alert', 'tampered');
+    
+    const cls = systemState === SystemState.TAMPERED ? 'tampered' : 
+                (systemState === SystemState.ALERT ? 'alert' : 'safe');
+    alertVal.classList.add(cls);
+    systemVal.classList.add(cls);
+    
+    // Lock Status + Battery %
+    lockVal.textContent = `🔋 ${Math.round(batteryPct)}%`;
+    
+    // Motor Bar Visualization
+    const motorSegs = motorBar.querySelectorAll('.seg');
+    const motorLit = Math.round(speedCurrentPct / 10);
+    motorSegs.forEach((seg, i) => {
+      seg.classList.toggle('on', i < motorLit);
+    });
+    
+    // Motor Text
+    const motorIcon = speedCurrentPct > 0 ? '▶' : '⏸';
+    const motorDir = direction === 'forward' ? 'AVANT' : 
+                     (direction === 'reverse' ? 'ARRIÈRE' : 'ARRÊT');
+    motorText.textContent = `${motorIcon} Moteur : ${speedCurrentPct}% — ${motorDir}`;
+  }
+  
+  // ============================================
+  // MOTOR SPEED CONTROL (PWM SIMULATION)
+  // ============================================
+  
+  function setSpeed(targetPct) {
+    speedTargetPct = Math.max(0, Math.min(100, targetPct));
+    
+    // Safety Checks — Motor MUST be stopped in these conditions
+    if (charging || braking || systemState === SystemState.TAMPERED || lcdMode === 'history' || batteryPct <= 0) {
+      speedTargetPct = 0;
+      speedCurrentPct = 0;
+      direction = 'stop';
+      updateWheelAnimation();
+      updateDirectionIndicator();
+      refreshLCD();
+      refreshDashboard();
+      refreshCluster();
+      return;
+    }
+    
+    // Start PWM smoothing if not already running
+    if (!pwmIntervalId) {
+      pwmIntervalId = setInterval(() => {
+        if (speedCurrentPct !== speedTargetPct) {
+          // Smooth transition: 5% per 100ms
+          const diff = speedTargetPct - speedCurrentPct;
+          const step = Math.sign(diff) * Math.min(5, Math.abs(diff));
+          speedCurrentPct = Math.max(0, Math.min(100, speedCurrentPct + step));
+          
+          // Update direction
+          direction = speedCurrentPct > 0 ? 'forward' : 'stop';
+          
+          // Update all displays
+          updateWheelAnimation();
+          updateDirectionIndicator();
+          refreshLCD();
+          refreshDashboard();
+          refreshCluster();
+          
+          speedOverlayVal.textContent = `${Math.round(speedTargetPct)}%`;
+        }
+      }, 100);
+    }
+  }
+  
+  // ============================================
+  // WHEEL ANIMATION CONTROL
+  // ============================================
+  
+  function updateWheelAnimation() {
+    if (!rearWheelEl) return;
+    
+    // CRITICAL: Stop wheel if motor blocked
+    if (charging || braking || systemState === SystemState.TAMPERED || lcdMode === 'history') {
+      rearWheelEl.style.animation = 'none';
+      return;
+    }
+    
+    // Rotate wheel proportionally to speed
+    if (speedCurrentPct > 0) {
+      const duration = Math.max(0.2, 2 - speedCurrentPct / 50); // Faster at higher speeds
+      rearWheelEl.style.animation = `spin ${duration}s linear infinite`;
+    } else {
+      rearWheelEl.style.animation = 'none';
+    }
+  }
+  
+  // ============================================
+  // DIRECTION INDICATOR UPDATE
+  // ============================================
+  
+  function updateDirectionIndicator() {
+    if (!dirIndicator) return;
+    
+    const text = direction === 'forward' ? 'AVANT' : 
+                 direction === 'reverse' ? 'ARRIÈRE' : 'ARRÊT';
+    dirIndicator.textContent = `Direction : ${text}`;
+  }
+  
+  // ============================================
+  // CHARGING SYSTEM (RB4 Interrupt)
+  // ============================================
+  
+  function setCharging(on) {
+    if (on) {
+      charging = true;
+      charged = false;
+      speedTargetPct = 0;
+      speedCurrentPct = 0;
+      direction = 'stop';
+      chargePressCount = 0;
+      
+      logEvent('charge', 'Mode CHARGE actif — Moteur bloqué');
+      systemState = SystemState.ALERT;
+      
+      // Yellow LED blinking
+      if (chargeBlinkId) clearInterval(chargeBlinkId);
+      chargeBlinkId = setInterval(() => {
+        ledAlert.classList.toggle('on');
+      }, 400);
+      
+      // Auto-complete after 15 seconds (Timer0 simulation)
+      if (chargeTimerId) clearTimeout(chargeTimerId);
+      chargeTimerId = setTimeout(() => finishCharge(), 15000);
+      
+    } else {
+      charging = false;
+      if (chargeBlinkId) {
+        clearInterval(chargeBlinkId);
+        chargeBlinkId = null;
+      }
+      if (chargeTimerId) {
+        clearTimeout(chargeTimerId);
+        chargeTimerId = null;
+      }
+      chargePressCount = 0;
+      
+      logEvent('charge', 'Charge arrêtée');
+      systemState = SystemState.SAFE;
+      ledAlert.classList.remove('on');
+    }
+    
+    updateWheelAnimation();
+    updateDirectionIndicator();
+    refreshLCD();
+    refreshDashboard();
+    refreshCluster();
+  }
+  
+  function finishCharge() {
+    if (chargeBlinkId) {
+      clearInterval(chargeBlinkId);
+      chargeBlinkId = null;
+    }
+    if (chargeTimerId) {
+      clearTimeout(chargeTimerId);
+      chargeTimerId = null;
+    }
+    
+    charging = false;
+    charged = true;
+    
+    // Animate battery charging to 100%
+    const startBattery = batteryPct;
+    const chargeDuration = 1500; // 1.5 seconds to fill
+    const startTime = performance.now();
+    
+    const animateCharge = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / chargeDuration);
+      
+      batteryPct = startBattery + (100 - startBattery) * progress;
+      refreshCluster();
+      
+      if (progress < 1) {
+        requestAnimationFrame(animateCharge);
+      } else {
+        batteryPct = 100;
+        refreshCluster();
+      }
+    };
+    
+    requestAnimationFrame(animateCharge);
+    
+    lcdL1.textContent = 'Charge terminée';
+    lcdL2.textContent = 'Batterie pleine';
+    
+    ledSystemOk.classList.add('on');
+    ledAlert.classList.remove('on');
+    
+    logEvent('charge', '✅ Charge terminée — Batterie 100%');
+    systemState = SystemState.SAFE;
+    
+    refreshLCD();
+    refreshDashboard();
+    
+    // Reset charged flag after 3 seconds
+    setTimeout(() => {
+      charged = false;
+      refreshLCD();
+    }, 3000);
+  }
+  
+  // ============================================
+  // BRAKING SYSTEM (Emergency Stop)
+  // ============================================
+  
+  function setBraking(on, reason = '') {
+    braking = on;
+    
+    if (on) {
+      speedTargetPct = 0;
+      speedCurrentPct = 0;
+      direction = 'stop';
+      
+      logEvent('brake', `🚨 Freinage d'urgence ${reason ? '(' + reason + ')' : ''}`);
+      systemState = SystemState.ALERT;
+      
+    } else {
+      logEvent('brake', '✅ Freinage libéré');
+      systemState = SystemState.SAFE;
+    }
+    
+    updateWheelAnimation();
+    updateDirectionIndicator();
+    refreshLCD();
+    refreshDashboard();
+    refreshCluster();
+  }
+  
+  // ============================================
+  // BATTERY DRAIN SYSTEM (Realistic Discharge)
+  // ============================================
+  
+  function startBatteryDrain() {
+    if (batteryDrainIntervalId) return;
+    
+    batteryDrainIntervalId = setInterval(() => {
+      // Battery drains based on motor usage
+      if (speedCurrentPct > 0 && !charging && batteryPct > 0) {
+        // Drain rate: higher speed = faster drain
+        // At 100% speed: battery drains from 100% to 0% in ~40 seconds
+        // At 50% speed: battery drains from 100% to 0% in ~80 seconds
+        const drainRate = (speedCurrentPct / 100) * 2.5; // 2.5% per second at full speed
+        batteryPct = Math.max(0, batteryPct - drainRate);
+        
+        refreshCluster();
+        refreshDashboard();
+        
+        // Low battery warning at 20%
+        if (batteryPct <= 20 && batteryPct > 18 && !charging) {
+          logEvent('battery', '⚠ Batterie faible: ' + Math.round(batteryPct) + '%');
+        }
+        
+        // Auto-stop motor at 0%
+        if (batteryPct <= 0) {
+          speedTargetPct = 0;
+          speedCurrentPct = 0;
+          logEvent('battery', '❌ Batterie épuisée — Moteur arrêté');
+          updateWheelAnimation();
+        }
+      }
+    }, 1000); // Check every second
+  }
+  
+  // ============================================
+  // OBSTACLE DETECTION (ADC1 — Distance Sensor)
+  // ============================================
+  
+  function startObstaclePolling() {
+    setInterval(() => {
+      // Only check if security enabled and not charging
+      if (!securityEnabled || charging) return;
+      
+      // Obstacle > 50% triggers emergency braking
+      if (obstaclePct > 50 && !obstacleActive) {
+        obstacleActive = true;
+        obstacle = true;
+        
+        setBraking(true, 'Obstacle détecté > 50%');
+        beep(300);
+        storeAlert('Obstacle', speedCurrentPct);
+        
+        // Auto-release after 3 seconds
+        setTimeout(() => {
+          obstacle = false;
+          obstacleActive = false;
+          setBraking(false);
+        }, 3000);
+      }
+    }, 100);
+  }
+  
+  // ============================================
+  // BUZZER (NPN Transistor Q1)
+  // ============================================
+  
+  function beep(ms = 200) {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.type = 'square';
+      oscillator.frequency.value = 880; // 880 Hz
+      gainNode.gain.value = 0.05; // Low volume
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), ms);
+    } catch (e) {
+      console.warn('Audio not available:', e);
+    }
+  }
+  
+  // ============================================
+  // ALERT HISTORY (EEPROM SIMULATION)
+  // ============================================
+  
+  function storeAlert(type, speed) {
+    const now = new Date();
+    const ts = now.toISOString();
+    alerts.unshift({ type, speed: Math.round(speed), ts });
+    
+    // Keep only last 5 alerts
+    while (alerts.length > 5) alerts.pop();
+    
+    logEvent('eeprom', `Alerte stockée: ${type} @ ${Math.round(speed)}%`);
+  }
+  
+  function showAlertHistory() {
+    const a1 = alerts[0];
+    const a2 = alerts[1];
+    
+    lcdMode = 'history';
+    speedTargetPct = 0;
+    speedCurrentPct = 0;
+    direction = 'stop';
+    
+    // Show first alert
+    lcdL1.textContent = 'Historique Alerte';
+    lcdL2.textContent = a1 ? `${a1.type} — V:${a1.speed}%` : 'Aucune alerte';
+    
+    updateWheelAnimation();
+    updateDirectionIndicator();
+    refreshDashboard();
+    
+    logEvent('history', 'Consultation historique EEPROM');
+    
+    // Show second alert after 1.5s
+    setTimeout(() => {
+      if (a2) {
+        lcdL1.textContent = `Alerte : ${a2.type}`;
+        lcdL2.textContent = `Vitesse : ${a2.speed}%`;
+        
+        // Return to normal after another 1.5s
+        setTimeout(() => {
+          lcdMode = 'normal';
+          refreshLCD();
+        }, 1500);
+      } else {
+        lcdMode = 'normal';
+        refreshLCD();
+      }
+    }, 1500);
+  }
+  
+  // ============================================
+  // STARTUP INITIALIZATION (Scenario 0)
+  // ============================================
+  
+  function startupInit() {
+    logEvent('system', '🔄 Initialisation du système...');
+    
+    lcdL1.textContent = 'Initialisation...';
+    lcdL2.textContent = '';
+    
+    let blinks = 0;
+    const doBlink = () => {
+      ledSystemOk.classList.add('on');
+      
+      setTimeout(() => {
+        ledSystemOk.classList.remove('on');
+        blinks++;
+        
+        if (blinks < 3) {
+          setTimeout(doBlink, 200);
+        } else {
+          // After 3 blinks, system ready
+          ledSystemOk.classList.add('on');
+          systemState = SystemState.SAFE;
+          securityEnabled = true;
+          
+          lcdL1.textContent = 'Sécurité Critique ON';
+          lcdL2.textContent = `Vitesse : ${speedCurrentPct}%`;
+          
+          logEvent('system', '✅ Modules sécurité activés');
+          
+          refreshDashboard();
+          refreshCluster();
+        }
+      }, 200);
+    };
+    
+    doBlink();
+  }
+  
+  // ============================================
+  // EVENT LISTENERS — PIC INTERRUPTS
+  // ============================================
+  
+  // RB0 — Security Toggle (Scenario 3)
+  btnRB0Int.addEventListener('click', () => {
+    securityEnabled = !securityEnabled;
+    logEvent('security', `🔐 RB0 Interrupt: SEC ${securityEnabled ? 'ON' : 'OFF'}`);
+    refreshLCD();
+    refreshLEDs();
+    refreshDashboard();
+    refreshCluster();
+  });
+  
+  // RB4 — Charge Mode (Scenario 4)
+  btnRB4Int.addEventListener('click', () => {
+    if (systemState === SystemState.TAMPERED) {
+      logEvent('charge', '❌ Charge impossible (système TAMPERED)');
+      return;
+    }
+    
+    if (!charging && batteryPct >= 100) {
+      logEvent('charge', 'ℹ Batterie déjà pleine (100%)');
+      return;
+    }
+    
+    setCharging(!charging);
+  });
+  
+  // RB7 — Alert History (Scenario 6)
+  btnRB7Int.addEventListener('click', () => {
+    showAlertHistory();
+  });
+  
+  // RA4 — Timer0 Confirm (Scenario 5)
+  btnRA4Int.addEventListener('click', () => {
+    if (charging) {
+      chargePressCount++;
+      logEvent('timer', `⏲ RA4 Press: ${chargePressCount}/5`);
+      
+      if (chargePressCount >= 5) {
+        finishCharge();
+      }
+      
+      refreshLCD();
+      refreshCluster();
+    }
+  });
+  
+  // Throttle Input — Accelerometer (RA0/RA1 ADC0) (Scenario 1)
+  throttleInput.addEventListener('input', (e) => {
+    setSpeed(Number(e.target.value));
+  });
+  
+  // Obstacle Input — Obstacle Sensor (RA2 ADC1) (Scenario 2)
+  obstacleInput.addEventListener('input', (e) => {
+    obstaclePct = Number(e.target.value);
+    obstacleInputVal.textContent = `${obstaclePct}%`;
+  });
+  
+  // ============================================
+  // VIEWER LOAD EVENT
+  // ============================================
+  
+  viewer.addEventListener('load', () => {
+    logEvent('system', '📡 Modèle 3D chargé');
+    startupInit();
+    startObstaclePolling();
+    startBatteryDrain();
+  });
+  
+  // ============================================
+  // INITIAL STATE
+  // ============================================
+  
+  logEvent('system', '🚀 Interface démarrée');
+  refreshLCD();
+  refreshDashboard();
+  refreshCluster();
+</script>
+</body>
+</html>
